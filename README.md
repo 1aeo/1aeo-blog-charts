@@ -56,6 +56,7 @@ archives once and point the scripts at them, avoiding re-downloads:
 ```
 export CT_CACHE=/path/to/archives      # dir holding consensuses-2026-06.tar.xz, server-descriptors-2026-06.tar.xz, ...
 export CT_FRESH=/path/to/recent-files  # (overload scripts only) dir of CollecTor recent/ per-file server-descriptors for the final day
+export CT_FRESH_CONSENSUS=/path/to/dir # (chart-network-overload.py with DENOMINATOR="consensus" only) dir of recent/ per-file consensuses for the final day
 ```
 
 Without them, everything is fetched live from CollecTor. (Note: the scripts use
@@ -67,12 +68,18 @@ Python's built-in `lzma`/`tarfile`, so no `xz` binary is required.)
   it crosses Tor's internal overload thresholds. Relays publish at least every
   18 h, so each UTC day effectively covers the whole live network; we count
   distinct fingerprints per day.
+- **Denominator (configurable):** `chart-network-overload.py` has a `DENOMINATOR`
+  knob at the top — `"publishers"` (default: relays that published a descriptor
+  that day) or `"consensus"` (relays in that day's consensus, a slightly smaller
+  denominator → percentages ~0.3–0.4 pp higher, e.g. the Jul-12 peak reads 12.7%
+  instead of 12.3%). The per-day stdout prints which denominator was used.
 - **Final day (Jul 13):** CollecTor's signed *monthly* archive lags real time by
   a day or two (it fully covers days through ~Jul 12). The overload scripts fill
   the final chart day (Jul 13) by unioning CollecTor's *recent/* per-file
   server-descriptor documents into **that day only** — every earlier day comes
   wholly from the signed monthly archive, so Jul 11 stays 11.4% and Jul 12 stays
-  12.2%. Overload peaked Jul 12 (12.2%, 1,254 relays) and eased to ~11.3% on Jul 13.
+  12.3%. Overload peaked Jul 12 (12.3%, 1,265 relays) and eased to ~11.7% on Jul 13
+  (publishers denominator; the `"consensus"` denominator gives ~12.7% at the peak).
 - **Roles:** each relay's role (guard-only / guard+exit / exit-only / middle) is
   read from the flags in the daily 12:00 UTC consensus and joined to that day's
   overload set by fingerprint.

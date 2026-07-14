@@ -13,7 +13,10 @@
 # (Jul 13) we ALSO parse CollecTor's *recent/* per-file server-descriptor
 # documents (each covers a slice of the last few days) and union them into the
 # final day only -- every earlier day comes wholly from the signed monthly
-# archive, so Jul 11 stays 11.4% and Jul 12 stays 12.2%.
+# archive, so Jul 11 stays 11.4% and Jul 12 stays 12.3% (settled monthly archive).
+#
+# The DENOMINATOR ("% of what?") is a config knob -- see below: "publishers"
+# (default) or "consensus".
 #
 # Requires: python3 + matplotlib. Runtime: ~10-30 min (streams ~1-2 GB of archives).
 # Usage: python3 chart-network-overload.py [output.png]
@@ -25,6 +28,21 @@ import matplotlib.pyplot as plt, matplotlib.dates as md
 MONTHS = ["2026-06", "2026-07"]
 LAST_DAY = "2026-07-13"      # final chart day, filled from CollecTor recent/ per-file docs
 OUT = sys.argv[1] if len(sys.argv) > 1 else "chart-network-overload-only.png"
+
+# ---------------------------------------------------------------------------
+# DENOMINATOR -- what the "% of the network" is measured against. Change freely.
+#   "publishers" (default): relays that published a server descriptor that UTC
+#       day. Every relay republishes at least every ~18h, so a day covers
+#       effectively the whole live network. Uses only the descriptor archives
+#       parsed below. This is what the published blog chart uses (wave-2 peak
+#       12.3%, Jul 12).
+#   "consensus": relays listed in that day's consensus (the 12:00 UTC one when
+#       present). A slightly smaller, "official" denominator, so percentages come
+#       out ~0.3-0.4 pp higher (wave-2 peak ~12.7%). This ALSO streams the
+#       CollecTor consensus archives (a bit more to download).
+# For any other denominator, edit denom_for_day() further down.
+DENOMINATOR = "publishers"
+# ---------------------------------------------------------------------------
 
 # Stream a CollecTor monthly archive. Set CT_CACHE=/path to read a pre-downloaded
 # *.tar.xz from disk (optional speedup; without it the archive is streamed straight
@@ -56,13 +74,48 @@ def fresh_texts():
         except Exception:
             continue
 
+# Relays in each day's consensus (used only when DENOMINATOR == "consensus").
+# Public source: CollecTor consensus archives + recent/ for the final day or two.
+# CT_CACHE reuses pre-downloaded consensuses-YYYY-MM.tar.xz; CT_FRESH_CONSENSUS
+# points at a local dir of recent/ consensus files.
+def consensus_counts():
+    counts = {}
+    def consider(name, data):
+        base = name.rsplit("/", 1)[-1]
+        if not base.endswith("-consensus"): return
+        day = base[:10]
+        noon = base[11:19] == "12-00-00"       # prefer the 12:00 UTC consensus per day
+        if day in counts and not noon: return
+        counts[day] = data.count(b"\nr ")       # each relay entry starts a line "r "
+    for month in MONTHS:
+        url = f"https://collector.torproject.org/archive/relay-descriptors/consensuses/consensuses-{month}.tar.xz"
+        print(f"streaming {url} (consensus denominator) ...", flush=True)
+        try:
+            tf = open_archive(url)
+        except Exception as e:
+            print("  (consensus archive unavailable:", e, ")", flush=True); continue
+        for mem in tf:
+            if mem.isfile() and mem.name.endswith("-consensus"):
+                consider(mem.name, tf.extractfile(mem).read())
+    # fill the final day(s) from CollecTor recent/ per-file consensuses
+    localdir = os.environ.get("CT_FRESH_CONSENSUS")
+    try:
+        if localdir:
+            for n in sorted(os.listdir(localdir)):
+                p = os.path.join(localdir, n)
+                if os.path.isfile(p): consider(n, open(p, "rb").read())
+        else:
+            rbase = "https://collector.torproject.org/recent/relay-descriptors/consensuses/"
+            idx = urllib.request.urlopen(rbase, timeout=300).read().decode("utf-8", "replace")
+            for n in sorted(set(re.findall(r'href="([0-9-]+-consensus)"', idx))):
+                try: consider(n, urllib.request.urlopen(rbase + n, timeout=300).read())
+                except Exception: continue
+    except Exception as e:
+        print("  (recent/ consensuses unavailable:", e, ")", flush=True)
+    return counts
+
 pub = defaultdict(set)   # day -> fps that published
 over = defaultdict(set)  # day -> fps whose descriptor carries overload-general
-
-def finish(fp, day, ov):
-    if fp and day:
-        pub[day].add(fp)
-        if ov: over[day].add(fp)
 
 def parse_descriptors(text, pubmap, overmap):
     fp = day = None; ov = False
@@ -111,12 +164,25 @@ print(f"  recent/: {nf} files; {LAST_DAY} adds pub {len(pub[LAST_DAY])}->{len(pu
 pub[LAST_DAY] |= pub_f[LAST_DAY]
 over[LAST_DAY] |= over_f[LAST_DAY]
 
-days = sorted(d for d in pub if "2026-06-15" <= d <= LAST_DAY and len(pub[d]) > 5000)  # wave 1 peaked Jun 28 (8.2%), wave 2 peaked Jul 12 (12.2%), eased to ~11.3% on Jul 13
+# ---- 3. denominator (config-selectable; edit denom_for_day for a custom one) ----
+cons = consensus_counts() if DENOMINATOR == "consensus" else {}
+
+def denom_for_day(d):
+    if DENOMINATOR == "consensus":
+        c = cons.get(d)
+        if c: return c
+        print(f"  [denominator] no consensus for {d}; falling back to publishers ({len(pub[d])})", flush=True)
+    return len(pub[d])   # "publishers": relays that published a descriptor that day
+
+days = sorted(d for d in pub if "2026-06-15" <= d <= LAST_DAY and len(pub[d]) > 5000)  # wave 1 peaked Jun 28 (8.2%), wave 2 peaked Jul 12 (12.3%), eased to ~11.7% on Jul 13
 X = [dt.datetime.strptime(d, "%Y-%m-%d") for d in days]
-net = [100 * len(over[d]) / len(pub[d]) for d in days]
+denom = {d: denom_for_day(d) for d in days}
+net = [100 * len(over[d]) / denom[d] for d in days]
 for d, v in zip(days, net):
-    print(f"{d}  publishers={len(pub[d]):5d}  overloaded={len(over[d]):5d}  {v:.1f}%")
-json.dump({d: {"pub": len(pub[d]), "over": len(over[d])} for d in days}, open(OUT + ".data.json", "w"))
+    print(f"{d}  overloaded={len(over[d]):5d}  denom[{DENOMINATOR}]={denom[d]:5d}  {v:.1f}%")
+json.dump({"denominator": DENOMINATOR,
+           "days": {d: {"over": len(over[d]), "denom": denom[d]} for d in days}},
+          open(OUT + ".data.json", "w"))
 
 # ---- figure ----
 INK="#e6e6e6"; MUT="#9a9a9a"; BG="#1e1e1e"; GRID="#333"; RED="#ff6b6b"; AMB="#ffb454"
@@ -139,7 +205,11 @@ ax.scatter([X[-1]], [net[-1]], s=22, color=RED, zorder=6, edgecolor=BG, lw=1)
 ax.annotate(f"eased to {net[-1]:.1f}%\n{X[-1]:%b %d}", (X[-1], net[-1]), xytext=(10, 26),
             textcoords="offset points", ha="left", va="center", fontsize=9.0, color=INK, fontweight="bold",
             arrowprops=dict(arrowstyle="-", color=MUT, lw=0.8))
-ax.text(X[3], 2.0, "baseline 1.5-3.3%", color=MUT, fontsize=8.5)
+# data-driven baseline label (pre-onset days) -- correct for either denominator
+base_i = [i for i, d in enumerate(days) if d <= "2026-06-25"]
+if base_i:
+    blo, bhi = min(net[i] for i in base_i), max(net[i] for i in base_i)
+    ax.text(X[3], 2.0, f"baseline {blo:.1f}-{bhi:.1f}%", color=MUT, fontsize=8.5)
 ax.set_ylim(0, 13); ax.set_ylabel("Tor relays reporting overload  (% of network)", fontsize=10.5, color=MUT)
 ax.grid(True, color=GRID, lw=0.7); ax.set_axisbelow(True)
 for s in ("top", "right"): ax.spines[s].set_visible(False)
