@@ -1,34 +1,41 @@
-# Reproduce the public-data charts from the June–July 2026 circuit-building DoS posts
+# Reproduce the public-data charts from the June–July 2026 circuit-building DoS series
 
 Every chart below is built **entirely from Tor's public data** — the signed
 [CollecTor](https://collector.torproject.org/) archives and/or the
 [Onionoo](https://onionoo.torproject.org/) API. No relay access, no private
 telemetry. Each script is self-contained: it fetches the data, recomputes the
-numbers from scratch, and renders the exact chart published in the post.
+numbers from scratch, and renders the chart published in the post.
 
-Scripts are grouped by post: **`blog1/`** (the network-view post) and
-**`blog2/`** (the fleet post). Every chart in the network-view post is public;
-from the fleet post, only the charts built from public data are here (the
-first-party MetricsPort charts are not reproducible without relay access).
+## The series
+
+The charts belong to a four-part series on the June–July 2026 circuit-building
+DoS wave. Script directories are named after the post they reproduce:
+
+| # | post | scripts |
+|---|---|---|
+| 1 | [The Tor Network Is Under a Circuit-Building DoS Wave](https://1aeo.com/blog/tor-network-dos-wave-june-2026.html) | **`tor-network-dos-wave-june-2026/`** — every chart in the post |
+| 2 | [Anatomy of a Circuit-Building DoS: Three Waves on a Guard Fleet](https://1aeo.com/blog/circuit-building-dos-anatomy-june-2026.html) | none — its charts are built from 1AEO's first-party MetricsPort telemetry, not reproducible without relay access |
+| 3 | [What a Circuit-Building DoS Actually Costs: How 1AEO's Guard Fleet Held](https://1aeo.com/blog/circuit-building-dos-fleet-cost-june-2026.html) | **`circuit-building-dos-fleet-cost-june-2026/`** — the post's public-data charts (its first-party charts are not reproducible) |
+| 4 | [Defending Against Circuit-Building DoS: Better Metrics, and What Tor Could Fix](https://1aeo.com/blog/defending-against-circuit-dos-june-2026.html) | none — no charts |
 
 ## Charts in the network-view post ("The Tor Network Is Under a Circuit-Building DoS Wave")
 
 | script | chart | data source | runtime |
 |---|---|---|---|
-| `blog1/chart-network-overload.py` | Two overload waves across the Tor network | CollecTor server descriptors (`overload-general`) | 10–30 min |
-| `blog1/chart-guards-vs-exits.py` | The flood hits the guard position hardest | CollecTor consensuses (flags) × server descriptors | 15–40 min |
-| `blog1/chart-network-flap.py` | The flood shook the Running flag network-wide | CollecTor hourly consensuses (`Running` diffs) | 5–15 min |
-| `blog1/chart-netflap-rate.py` | Running-flag flicker rate (% of the network) | CollecTor 6h consensuses (`Running` diffs) | 3–10 min |
+| `tor-network-dos-wave-june-2026/chart-network-overload.py` | Two overload waves across the Tor network | CollecTor server descriptors (`overload-general`) | 10–30 min |
+| `tor-network-dos-wave-june-2026/chart-guards-vs-exits.py` | The flood hits the guard position hardest | CollecTor consensuses (flags) × server descriptors | 15–40 min |
+| `tor-network-dos-wave-june-2026/chart-network-flap.py` | The flood shook the Running flag network-wide | CollecTor hourly consensuses (`Running` diffs) | 5–15 min |
+| `tor-network-dos-wave-june-2026/chart-netflap-rate.py` | Running-flag flicker rate (% of the network) | CollecTor 6h consensuses (`Running` diffs) | 3–10 min |
 
-## Public-data charts in the fleet post ("How Our Guard Fleet Held")
+## Public-data charts in the fleet-cost post ("What a Circuit-Building DoS Actually Costs")
 
 | script | chart | data source | runtime |
 |---|---|---|---|
-| `blog2/chart-network-overload-2line.py` | Network overload vs the 1AEO fleet | CollecTor server descriptors + Onionoo (1AEO fingerprint set) | 10–30 min |
-| `blog2/chart-guard-count-time.py` | Overloaded guards over time, top-10 operators | CollecTor consensuses × server descriptors + Onionoo (operator sets) | 15–40 min |
-| `blog2/chart-flagflap.py` | Our guards' Running-flag flapping vs the network's guards (matched %) | CollecTor 6h consensuses + Onionoo (1AEO fingerprint set) | 5–15 min |
-| `blog2/chart-guard-bubble.py` | Scale vs. overload — top-10 guard operators | Onionoo `/details` (snapshot) | seconds |
-| `blog2/chart-entryload.py` | Per-guard entry load vs overload | Onionoo `/details` + `/weights` (snapshot) | seconds |
+| `circuit-building-dos-fleet-cost-june-2026/chart-network-overload-2line.py` | Network overload vs the 1AEO fleet | CollecTor server descriptors + Onionoo (1AEO fingerprint set) | 10–30 min |
+| `circuit-building-dos-fleet-cost-june-2026/chart-guard-count-time.py` | Overloaded guards over time, top-10 operators | CollecTor consensuses × server descriptors + Onionoo (operator sets) | 15–40 min |
+| `circuit-building-dos-fleet-cost-june-2026/chart-flagflap.py` | 1AEO guards' Running-flag flapping vs the network's guards (matched %) | CollecTor 6h consensuses + Onionoo (1AEO fingerprint set) | 5–15 min |
+| `circuit-building-dos-fleet-cost-june-2026/chart-guard-bubble.py` | Scale vs. overload — top-10 guard operators | Onionoo `/details` (snapshot) | seconds |
+| `circuit-building-dos-fleet-cost-june-2026/chart-entryload.py` | Per-guard entry load vs overload | Onionoo `/details` + `/weights` (snapshot) | seconds |
 
 ## Requirements
 
@@ -40,7 +47,7 @@ first-party MetricsPort charts are not reproducible without relay access).
 ## Usage
 
 ```
-python3 blog1/<script>.py [output.png]   # or blog2/<script>.py
+python3 <post-directory>/<script>.py [output.png]
 ```
 
 **Optional speed-ups (CollecTor scripts):** pre-download the monthly `.tar.xz`
@@ -78,15 +85,21 @@ Python's built-in `lzma`/`tarfile`, so no `xz` binary is required.)
   proven in ContactInfo (queried via Onionoo `contact=<domain>`), and 1AEO's own
   relays are identified publicly via `contact=1aeo.com` — never from any private
   list.
-- **`blog2/chart-flagflap.py`:** a matched guards-vs-guards comparison — the % of OUR
+- **`chart-flagflap.py`:** a matched guards-vs-guards comparison — the % of 1AEO's
   guard fleet that dropped the `Running` flag per 6h (green) vs the % of the whole
   network's guard relays that did (red), on one shared axis. Guard-only on both
   sides so the populations are comparable; 1AEO relays are identified via Onionoo
-  `contact=1aeo.com`, migration relays excluded. Our guards essentially never
-  flapped pre-flood, then peaked ~4.6% under load (vs the network's guards ~2.1%)
-  and self-healed to zero — showing the relays stayed up, losing only the flag.
+  `contact=1aeo.com`. The script counts every 1AEO guard visible in the public
+  consensus: essentially zero flapping pre-flood, a peak of **~7.4%** under load
+  (vs the network's guards ~2.1%), then self-healing back to zero — the relays
+  stayed up, losing only the flag. The blog post's chart reads a bit lower at the
+  peak (**~4.6%**) because it additionally sets aside ~35 relays that were being
+  migrated to new addresses in the same window — intentionally offline for
+  reasons unrelated to the DoS, known from 1AEO's own inventory and not derivable
+  from public data — so the DoS-attributable figure is the lower one. The network
+  line is identical either way.
 
-## Onionoo snapshots (`blog2/chart-guard-bubble.py`, `blog2/chart-entryload.py`)
+## Onionoo snapshots (`chart-guard-bubble.py`, `chart-entryload.py`)
 
 Onionoo serves only the **current** network state — it has no historical archive —
 so these two snapshot charts cannot be reproduced from a past date the way the

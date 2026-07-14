@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Chart: "Under load our guards flickered out of the consensus more than the network's — then recovered"
+# Chart: "1AEO's guards flickered out more than the network's under load — then fully recovered"
 # (blog image: circuit-building-dos-wave-june-2026-chart-flagflap.png)
 #
 # Fully reproducible from public data — a matched guards-vs-guards comparison:
